@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Manas Premium Dashboard</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #141414; color: white; padding: 20px; }
+        .container { max-width: 850px; margin: 0 auto; }
+        .card { background-color: #222; padding: 20px; border-radius: 12px; margin-bottom: 25px; }
+        input, select, button { width: 100%; padding: 12px; margin-bottom: 12px; border-radius: 6px; border: none; box-sizing: border-box; }
+        input, select { background-color: #333; color: white; border: 1px solid #444; }
+        button { background-color: #e50914; color: white; font-weight: bold; cursor: pointer; }
+        .show-item { background-color: #2b2b2b; padding: 20px; margin-bottom: 15px; border-radius: 10px; position: relative; border-left: 6px solid #e50914; }
+        .favorite-btn { position: absolute; top: 15px; right: 15px; font-size: 24px; cursor: pointer; background: none; border: none; width: auto; }
+        .rating-stars { color: #f5c518; margin-bottom: 10px; }
+        .category-tag { background: #444; padding: 4px 10px; border-radius: 20px; font-size: 12px; display: inline-block; margin-bottom: 10px; }
+        .episode-list { background: #1a1a1a; padding: 10px; border-radius: 6px; margin: 10px 0; list-style: none; font-size: 14px; }
+        .episode-list li { padding: 5px 0; border-bottom: 1px solid #333; color: #ddd; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🎬 Manas Premium Dashboard</h1>
+
+    <!-- Form for Shows -->
+    <div class="card">
+        <h3>Add New Content</h3>
+        <form id="addForm">
+            <input type="text" id="title" placeholder="Show Title" required>
+            <input type="text" id="desc" placeholder="Description" required>
+            <div style="display: flex; gap: 10px;">
+                <input type="number" id="year" placeholder="Year" required>
+                <input type="number" step="0.1" id="rate" placeholder="Rating (0-5)" required>
+            </div>
+            <select id="cat">
+                <option value="Action">Action</option>
+                <option value="Comedy">Comedy</option>
+                <option value="Drama">Drama</option>
+                <option value="Sitcom">Sitcom</option>
+            </select>
+            <button type="submit">Publish Show</button>
+        </form>
+    </div>
+
+    <!-- Search and Display -->
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3>Library</h3>
+            <input type="text" id="search" placeholder="🔍 Search by title..." onkeyup="searchShows()" style="width: 40%; margin-bottom: 0;">
+        </div>
+        <div id="container"></div>
+    </div>
+</div>
+
+<script>
+    const api = "http://localhost:8080/api/shows";
+
+    async function load() {
+        const res = await fetch(api);
+        const data = await res.json();
+        render(data);
+    }
+
+    function render(data) {
+        const cont = document.getElementById('container');
+        cont.innerHTML = '';
+        data.forEach(s => {
+            const div = document.createElement('div');
+            div.className = 'show-item';
+            
+            let episodesHTML = '';
+            if(s.episodes && s.episodes.length > 0) {
+                episodesHTML = '<ul class="episode-list">';
+                s.episodes.forEach(ep => episodesHTML += `<li>🎬 ${ep.episodeTitle}</li>`);
+                episodesHTML += '</ul>';
+            }
+
+            div.innerHTML = `
+                <button class="favorite-btn" onclick="toggle(${s.id})">${s.isFavorite ? '❤️' : '🤍'}</button>
+                <span class="category-tag">${s.category}</span>
+                <h2>${s.title} <span style="font-size:14px; color:#888;">(${s.releaseYear})</span></h2>
+                <div class="rating-stars">⭐ ${s.rating}/5</div>
+                <p style="color:#ccc; margin-bottom: 15px;">${s.description}</p>
+                
+                <h4 style="margin: 0 0 5px 0;">Episodes</h4>
+                ${episodesHTML || '<p style="font-size:12px; color:#777;">No episodes added.</p>'}
+                
+                <div style="display: flex; gap: 5px; margin-top: 10px;">
+                    <input type="text" id="epInput-${s.id}" placeholder="Episode Title" style="margin-bottom:0; font-size:13px;">
+                    <button onclick="addEp(${s.id})" style="width: auto; margin-bottom:0; padding: 0 15px; background: #007bff; font-size:13px;">Add Episode</button>
+                </div>
+
+                <button onclick="del(${s.id})" style="background:#444; margin-top:15px; width:auto; padding:5px 15px; font-size:12px;">Delete Show</button>
+            `;
+            cont.appendChild(div);
+        });
+    }
+
+    document.getElementById('addForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const body = {
+            title: document.getElementById('title').value,
+            description: document.getElementById('desc').value,
+            releaseYear: document.getElementById('year').value,
+            rating: document.getElementById('rate').value,
+            category: document.getElementById('cat').value
+        };
+        await fetch(api, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+        document.getElementById('addForm').reset();
+        load();
+    };
+
+    async function addEp(showId) {
+        const input = document.getElementById(`epInput-${showId}`);
+        if(!input.value) return;
+        await fetch(`${api}/${showId}/episodes`, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({ episodeTitle: input.value })
+        });
+        load();
+    }
+
+    async function toggle(id) { await fetch(`${api}/favorite/${id}`, {method:'POST'}); load(); }
+    async function del(id) { if(confirm("Delete show?")) { await fetch(`${api}/${id}`, {method:'DELETE'}); load(); } }
+    async function searchShows() {
+        const k = document.getElementById('search').value;
+        const res = await fetch(k ? `${api}/search?title=${k}` : api);
+        const data = await res.json();
+        render(data);
+    }
+
+    load();
+</script>
+</body>
+</html>
